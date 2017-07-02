@@ -1,4 +1,3 @@
-use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::io::Result;
 use std::usize;
@@ -11,30 +10,21 @@ use bytes::{
 use encoding::{
     decode_varint,
     encode_varint,
-    encoded_len_varint,
     invalid_input,
 };
 
 /// A Protocol Buffers message.
 pub trait Message: Debug + PartialEq + Send + Sync {
 
-    /// Encodes the message to the buffer. An error will be returned if the
-    /// buffer has insuficient capacity .
-    fn encode(&self, buf: &mut BytesMut) {
-        let mut queue = VecDeque::new();
-        buf.reserve(self.encoded_len_with_queue(&mut queue));
-        self.encode_with_queue(&mut queue, buf)
-    }
+    /// Encodes the message to the buffer.
+    fn encode(&self, buf: &mut BytesMut);
 
-    /// Encodes the message, and writes it with a length-delimiter prefix to
-    /// the buffer. An error will be returned if the buffer does not have
-    /// sufficient capacity.
+    /// Encodes the message with a length-delimiting prefix to the buffer.
     fn encode_length_delimited(&self, buf: &mut BytesMut) {
-        let mut queue = VecDeque::new();
-        let len = self.encoded_len_with_queue(&mut queue);
-        buf.reserve(len + encoded_len_varint(len as u64));
+        let len = self.encoded_len();
+        buf.reserve(len);
         encode_varint(len as u64, buf);
-        self.encode_with_queue(&mut queue, buf);
+        self.encode(buf);
     }
 
     /// Decodes an instance of the message from the buffer.
@@ -60,29 +50,14 @@ pub trait Message: Debug + PartialEq + Send + Sync {
     /// merges it into `self`.
     fn merge_length_delimited(&mut self, buf: &mut Bytes) -> Result<()> {
         let len = decode_varint(buf)?;
-        if len > buf.remaining() as u64 {
+        if len > buf.len() as u64 {
             return Err(invalid_input("failed to merge message: buffer underflow"));
         }
         self.merge(&mut buf.split_to(len as usize))
     }
 
     /// Returns the encoded length of the message without a delimiter.
-    fn encoded_len(&self) -> usize {
-        let mut queue = VecDeque::new();
-        self.encoded_len_with_queu(&mut queue)
-    }
-
-    /// Encodes the message into the buffer.
-    ///
-    /// Lengths of nested messages (if any) are popped from the queue in post-order.
-    #[doc(hidden)]
-    fn encode_with_queue(&self, queue: &mut VecDeque<usize>, buf: &mut BytesMut);
-
-    /// Returns the encoded length of the message without a delimiter.
-    ///
-    /// Lengths of nested messages (if any) are be pushed on to the queue in post-order.
-    #[doc(hidden)]
-    fn encoded_len_with_queue(&self, queue: &mut VecDeque<usize>) -> usize;
+    fn encoded_len(&self) -> usize;
 }
 
 /*
