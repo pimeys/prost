@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 
 use itertools::{Either, Itertools};
 use multimap::MultiMap;
+use regex::Regex;
 
 use ast::{
     Comments,
@@ -52,6 +53,8 @@ pub struct CodeGenerator<'a> {
     message_graph: &'a MessageGraph,
     depth: u8,
     path: Vec<i32>,
+    all_caps_re: Regex,
+    snake_case_re: Regex,
     buf: &'a mut String,
 }
 
@@ -83,6 +86,8 @@ impl <'a> CodeGenerator<'a> {
             depth: 0,
             path: Vec::new(),
             buf: buf,
+            snake_case_re: Regex::new(r"[_]+").unwrap(),
+            all_caps_re: Regex::new(r"^[^\p{Ll}]*$").unwrap()
         };
 
         debug!("file: {:?}, package: {:?}", file.name.as_ref().unwrap(), code_gen.package);
@@ -325,6 +330,7 @@ impl <'a> CodeGenerator<'a> {
         self.buf.push_str("#[derive(Clone, Debug, Oneof, PartialEq)]\n");
         self.push_indent();
         self.buf.push_str("pub enum ");
+        
         self.buf.push_str(&snake_to_upper_camel(oneof.name()));
         self.buf.push_str(" {\n");
 
@@ -437,7 +443,14 @@ impl <'a> CodeGenerator<'a> {
     fn append_enum_value(&mut self, value: EnumValueDescriptorProto) {
         self.append_doc();
         self.push_indent();
-        self.buf.push_str(&snake_to_upper_camel(value.name()));
+        let name = value.name();
+
+        if self.all_caps_re.is_match(name) || self.snake_case_re.is_match(name) {
+            self.buf.push_str(&snake_to_upper_camel(value.name()));
+        } else {
+            self.buf.push_str(value.name());
+        }
+
         self.buf.push_str(" = ");
         self.buf.push_str(&value.number().to_string());
         self.buf.push_str(",\n");

@@ -12,6 +12,7 @@ extern crate itertools;
 extern crate multimap;
 extern crate petgraph;
 extern crate prost;
+extern crate regex;
 
 mod ast;
 mod code_generator;
