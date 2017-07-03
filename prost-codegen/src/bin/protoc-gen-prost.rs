@@ -6,14 +6,13 @@ extern crate prost_codegen;
 
 use std::collections::HashMap;
 use std::io::{
-    Cursor,
     Read,
     Write,
     self,
 };
 use std::path::PathBuf;
 
-use bytes::Buf;
+use bytes::{Bytes, BytesMut};
 
 use prost::Message;
 use prost_codegen::CodeGeneratorConfig;
@@ -31,7 +30,7 @@ fn main() {
     let len = bytes.len();
     assert_ne!(len, 0);
 
-    let request = CodeGeneratorRequest::decode(&mut Buf::take(Cursor::new(&mut bytes), len)).unwrap();
+    let request = CodeGeneratorRequest::decode(&mut Bytes::from(bytes)).unwrap();
     let mut response = CodeGeneratorResponse::default();
 
     let modules = prost_codegen::generate(&CodeGeneratorConfig::new(), request.proto_file);
@@ -76,7 +75,7 @@ fn main() {
         });
     }
 
-    let mut out = Vec::new();
-    response.encode(&mut out).unwrap();
-    io::stdout().write_all(&out).unwrap();
+    let mut out = BytesMut::new();
+    response.encode(&mut out);
+    io::stdout().write_all(&out[..]).unwrap();
 }

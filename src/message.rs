@@ -60,14 +60,13 @@ pub trait Message: Debug + PartialEq + Send + Sync {
     fn encoded_len(&self) -> usize;
 }
 
-/*
 impl <M> Message for Box<M> where M: Message {
     #[inline]
-    fn encode_raw<B>(&self, buf: &mut BytesMut) {
-        (**self).encode_raw(buf)
+    fn encode(&self, buf: &mut BytesMut) {
+        (**self).encode(buf)
     }
     #[inline]
-    fn merge<B>(&mut self, buf: &mut Take<B>) -> Result<()> where B: Buf {
+    fn merge(&mut self, buf: &mut Bytes) -> Result<()> {
         (**self).merge(buf)
     }
     #[inline]
@@ -75,4 +74,3 @@ impl <M> Message for Box<M> where M: Message {
         (**self).encoded_len()
     }
 }
-*/

@@ -8,24 +8,23 @@ extern crate bytes;
 extern crate log;
 extern crate env_logger;
 
-use std::io::Cursor;
-
-use bytes::Buf;
+use bytes::{Buf, BytesMut};
 
 use prost::Message;
 
 // Creates a checker function for each field trait.
-fn check_message<M>(msg: M) where M: Message + PartialEq {
+fn check_message<M>(msg: M) where M: Message + Default {
     let expected_len = msg.encoded_len();
 
-    let mut buf = Vec::with_capacity(18);
-    msg.encode(&mut buf).unwrap();
+    // TODO: change to BytesMut::new();
+    let mut buf = BytesMut::with_capacity(expected_len);
+    msg.encode(&mut buf);
 
     assert_eq!(expected_len, buf.len());
 
     info!("encoded message: {:?}", buf);
 
-    let mut buf = Cursor::new(&mut buf).take(expected_len);
+    let mut buf = buf.freeze();
     let roundtrip = M::decode(&mut buf).unwrap();
 
     if buf.has_remaining() {

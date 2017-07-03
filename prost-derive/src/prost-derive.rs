@@ -125,13 +125,12 @@ fn try_message(input: TokenStream) -> Result<TokenStream> {
 
             #[automatically_derived]
             impl _prost::Message for #ident {
-                #[inline]
-                fn encode_raw<B>(&self, buf: &mut B) where B: _bytes::BufMut {
+
+                fn encode(&self, buf: &mut _bytes::BytesMut) {
                     #(#encode)*
                 }
 
-                #[inline]
-                fn merge<B>(&mut self, buf: &mut _bytes::Take<B>) -> ::std::io::Result<()> where B: _bytes::Buf {
+                fn merge(&mut self, buf: &mut _bytes::Bytes) -> ::std::io::Result<()> {
                     fn map_err(field: &str, cause: ::std::io::Error) -> ::std::io::Error {
                         ::std::io::Error::new(cause.kind(),
                                               format!(concat!("failed to decode field ",
@@ -140,7 +139,7 @@ fn try_message(input: TokenStream) -> Result<TokenStream> {
                                                       field, cause))
                     }
 
-                    while _bytes::Buf::has_remaining(buf) {
+                    while !buf.is_empty() {
                         let (tag, wire_type) = _prost::encoding::decode_key(buf)?;
                         match tag {
                             #(#merge)*
@@ -150,7 +149,6 @@ fn try_message(input: TokenStream) -> Result<TokenStream> {
                     Ok(())
                 }
 
-                #[inline]
                 fn encoded_len(&self) -> usize {
                     0 #(+ #encoded_len)*
                 }
@@ -347,18 +345,17 @@ fn try_oneof(input: TokenStream) -> Result<TokenStream> {
             extern crate prost as _prost;
 
             impl #ident {
-                pub fn encode<B>(&self, buf: &mut B) where B: _bytes::BufMut {
+                pub fn encode(&self, buf: &mut _bytes::BytesMut) {
                     match *self {
                         #(#encode,)*
                     }
                 }
 
-                pub fn merge<B>(field: &mut ::std::option::Option<#ident>,
-                                tag: u32,
-                                wire_type: _prost::encoding::WireType,
-                                buf: &mut _bytes::Take<B>)
-                                -> ::std::io::Result<()>
-                where B: _bytes::Buf {
+                pub fn merge(field: &mut ::std::option::Option<#ident>,
+                             tag: u32,
+                             wire_type: _prost::encoding::WireType,
+                             buf: &mut _bytes::Bytes)
+                             -> ::std::io::Result<()> {
                     match tag {
                         #(#merge,)*
                         _ => unreachable!(concat!("invalid ", stringify!(#ident), " tag: {}"), tag),

@@ -71,7 +71,7 @@ pub fn encode_varint(mut value: u64, buf: &mut BytesMut) {
 #[inline]
 pub fn decode_varint(buf: &mut Bytes) -> Result<u64> {
     let mut value = 0;
-    for count in 0..min(10, buf.remaining()) {
+    for count in 0..min(10, buf.len()) {
         let byte = buf.get_u8();
         value |= ((byte & 0x7F) as u64) << (count * 7);
         if byte <= 0x7F {
@@ -176,20 +176,20 @@ pub fn skip_field(wire_type: WireType, buf: &mut Bytes) -> Result<()> {
             })?;
         },
         WireType::SixtyFourBit => {
-            if buf.remaining() < 8 {
+            if buf.len() < 8 {
                 return Err(invalid_data("failed to skip 64-bit field: buffer underflow"));
             }
             buf.advance(8);
         },
         WireType::ThirtyTwoBit => {
-            if buf.remaining() < 4 {
+            if buf.len() < 4 {
                 return Err(invalid_data("failed to skip 32-bit field: buffer underflow"));
             }
             buf.advance(4);
         },
         WireType::LengthDelimited => {
             let len = decode_varint(buf)?;
-            if len > buf.remaining() as u64 {
+            if len > buf.len() as u64 {
                 return Err(invalid_data("failed to skip length delimited field: buffer underflow"));
             }
             buf.advance(len as usize);
@@ -221,7 +221,7 @@ macro_rules! merge_repeated_numeric {
                                -> Result<()> {
             if wire_type == WireType::LengthDelimited {
                 let len = decode_varint(buf)?;
-                if len > buf.remaining() as u64 {
+                if len > buf.len() as u64 {
                     return Err(invalid_data("buffer underflow"));
                 }
                 let mut buf = buf.split_to(len as usize);
@@ -385,7 +385,7 @@ macro_rules! fixed_width {
 
             pub fn merge(wire_type: WireType, value: &mut $ty, buf: &mut Bytes) -> Result<()> {
                 check_wire_type($wire_type, wire_type)?;
-                if buf.remaining() < $width {
+                if buf.len() < $width {
                     return Err(invalid_data("buffer underflow"));
                 }
                 *value = buf.$get::<LittleEndian>();
@@ -556,7 +556,9 @@ pub mod bytes {
         }
 
         value.extend_from_slice(&buf[..len as usize]);
-        buf.advance(len as usize);
+
+        // TODO: use advance.
+        buf.split_to(len as usize);
         Ok(())
     }
 
@@ -579,7 +581,7 @@ pub mod message {
     where M: Message {
         check_wire_type(WireType::LengthDelimited, wire_type)?;
         let len = decode_varint(buf)?;
-        if len > buf.remaining() as u64 {
+        if len > buf.len() as u64 {
             return Err(invalid_data("buffer underflow"));
         }
         msg.merge(&mut buf.split_to(len as usize))?;
@@ -720,7 +722,7 @@ macro_rules! map {
               KM: Fn(WireType, &mut K, &mut Bytes) -> Result<()>,
               VM: Fn(WireType, &mut V, &mut Bytes) -> Result<()> {
             let len = decode_varint(buf)?;
-            if len > buf.remaining() as u64 {
+            if len > buf.len() as u64 {
                 return Err(invalid_data("buffer underflow"));
             }
 
@@ -775,7 +777,6 @@ pub mod btree_map {
 #[cfg(test)]
 mod test {
     use std::fmt::Debug;
-    use std::io::Cursor;
 
     use bytes::{Bytes, BytesMut};
     use quickcheck::TestResult;
@@ -802,12 +803,12 @@ mod test {
 
         let mut buf = buf.freeze();
 
-        if buf.remaining() != expected_len {
+        if buf.len() != expected_len {
             return TestResult::error(format!("encoded_len wrong; expected: {}, actual: {}",
-                                             expected_len, buf.remaining()));
+                                             expected_len, buf.len()));
         }
 
-        if !buf.has_remaining() {
+        if buf.is_empty() {
             // Short circuit for empty packed values.
             return TestResult::passed();
         }
@@ -830,15 +831,15 @@ mod test {
         }
 
         match wire_type {
-            WireType::SixtyFourBit if buf.remaining() != 8 => {
+            WireType::SixtyFourBit if buf.len() != 8 => {
                 return TestResult::error(
-                    format!("64bit wire type illegal remaining: {}, tag: {}",
-                            buf.remaining(), tag));
+                    format!("64bit wire type illegal buffer length: {}, tag: {}",
+                            buf.len(), tag));
             },
-            WireType::ThirtyTwoBit if buf.remaining() != 4 => {
+            WireType::ThirtyTwoBit if buf.len() != 4 => {
                 return TestResult::error(
-                    format!("32bit wire type illegal remaining: {}, tag: {}",
-                            buf.remaining(), tag));
+                    format!("32bit wire type illegal buffer length: {}, tag: {}",
+                            buf.len(), tag));
             },
             _ => (),
         }
@@ -881,8 +882,7 @@ mod test {
         let mut buf = BytesMut::with_capacity(expected_len);
         encode(tag, &value, &mut buf);
 
-        let mut buf = buf.freeze().into_buf().take(expected_len);
-
+        let mut buf = buf.freeze();
         if buf.remaining() != expected_len {
             return TestResult::error(format!("encoded_len wrong; expected: {}, actual: {}",
                                              expected_len, buf.remaining()));
@@ -929,7 +929,7 @@ mod test {
 
             assert_eq!(buf, encoded);
 
-            let roundtrip_value = decode_varint(&mut Bytes::from(encoded).into_buf()).expect("decoding failed");
+            let roundtrip_value = decode_varint(&mut Bytes::from(encoded)).expect("decoding failed");
             assert_eq!(value, roundtrip_value);
         }
 

@@ -17,13 +17,12 @@ pub mod google {
 
 use std::error;
 use std::io::{
-    Cursor,
     Error,
     ErrorKind,
     Result,
 };
 
-use bytes::Buf;
+use bytes::{Bytes, BytesMut};
 use prost::Message;
 
 pub enum RoundtripResult {
@@ -63,10 +62,10 @@ impl RoundtripResult {
 
 /// Tests round-tripping a message type. The message should be compiled with `BTreeMap` fields,
 /// otherwise the comparison may fail due to inconsistent `HashMap` entry encoding ordering.
-pub fn roundtrip<M>(data: &[u8]) -> RoundtripResult where M: Message {
+pub fn roundtrip<M>(data: &[u8]) -> RoundtripResult where M: Message + Default {
     // Try to decode a message from the data. If decoding fails, continue.
     let len = data.len();
-    let all_types = match M::decode(&mut Buf::take(Cursor::new(data), len)) {
+    let all_types = match M::decode(&mut Bytes::from(data)) {
         Ok(all_types) => all_types,
         Err(error) => return RoundtripResult::DecodeError(error),
     };
@@ -76,25 +75,24 @@ pub fn roundtrip<M>(data: &[u8]) -> RoundtripResult where M: Message {
     //assert!(encoded_len <= len, "encoded_len: {}, len: {}, all_types: {:?}",
                                 //encoded_len, len, all_types);
 
-    let mut buf1 = Vec::new();
-    if let Err(error) = all_types.encode(&mut buf1) {
-        return RoundtripResult::Error(error);
-    }
+    // TODO: change to BytesMut::new();
+    let mut buf1 = BytesMut::with_capacity(encoded_len);
+    all_types.encode(&mut buf1);
     if encoded_len != buf1.len() {
         return RoundtripResult::error(
             format!("expected encoded len ({}) did not match actual encoded len ({})",
                     encoded_len, buf1.len()));
     }
 
-    let roundtrip = match M::decode(&mut Buf::take(Cursor::new(&buf1), encoded_len)) {
+    let mut buf1 = buf1.freeze();
+    let roundtrip = match M::decode(&mut buf1.clone()) {
         Ok(roundtrip) => roundtrip,
         Err(error) => return RoundtripResult::Error(error),
     };
 
-    let mut buf2 = Vec::new();
-    if let Err(error) = roundtrip.encode(&mut buf2) {
-        return RoundtripResult::Error(error);
-    }
+    // TODO: change to BytesMut::new();
+    let mut buf2 = BytesMut::with_capacity(encoded_len);
+    roundtrip.encode(&mut buf2);
 
     /*
     // Useful for debugging:
@@ -103,11 +101,11 @@ pub fn roundtrip<M>(data: &[u8]) -> RoundtripResult where M: Message {
     eprintln!("a: {:?}\nb: {:?}", all_types, roundtrip);
     */
 
-    if buf1 != buf2 {
+    if buf1 != buf2.freeze() {
         return RoundtripResult::error("roundtripped encoded buffers do not match")
     }
 
-    RoundtripResult::Ok(buf1)
+    RoundtripResult::Ok(buf1.as_ref().to_owned())
 }
 
 #[cfg(test)]

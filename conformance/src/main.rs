@@ -8,7 +8,6 @@ extern crate prost_derive;
 include!(concat!(env!("OUT_DIR"), "/conformance.rs"));
 
 use std::io::{
-    Cursor,
     Read,
     Write,
     self,
@@ -16,7 +15,8 @@ use std::io::{
 
 use bytes::{
     Buf,
-    ByteOrder,
+    BufMut,
+    BytesMut,
     LittleEndian,
 };
 use prost::Message;
@@ -29,22 +29,24 @@ use test_all_types::{
 
 fn main() {
     env_logger::init().unwrap();
-    let mut bytes = Vec::new();
+    let mut buf = &mut BytesMut::new();
 
     loop {
-        bytes.resize(4, 0);
+        eprintln!("loop!");
+        buf.reserve(4);
 
-        if let Err(_) = io::stdin().read_exact(&mut bytes[..]) {
+        if let Err(error) = io::copy(&mut io::stdin().take(4), &mut buf.writer()) {
+            eprintln!("error: {}", error);
             // No more test cases.
             break;
         }
 
-        let len = LittleEndian::read_u32(&bytes[..]) as usize;
+        let len = buf.take().freeze().get_u32::<LittleEndian>() as usize;
 
-        bytes.resize(len, 0);
-        io::stdin().read_exact(&mut bytes[..]).unwrap();
+        buf.reserve(len);
+        io::copy(&mut io::stdin().take(len as u64), &mut buf.writer()).unwrap();
 
-        let result = match ConformanceRequest::decode(&mut Buf::take(Cursor::new(&mut bytes), len)) {
+        let result = match ConformanceRequest::decode(&mut buf.take().freeze()) {
             Ok(request) => handle_request(request),
             Err(error) => conformance_response::Result::ParseError(format!("{:?}", error)),
         };
@@ -53,14 +55,14 @@ fn main() {
         response.result = Some(result);
 
         let len = response.encoded_len();
-        bytes.resize(4, 0);
-
-        LittleEndian::write_u32(&mut bytes[..4], len as u32);
-        response.encode(&mut bytes).unwrap();
-        assert_eq!(len + 4, bytes.len());
+        // TODO: drop the reserve.
+        buf.reserve(len + 4);
+        buf.put_u32::<LittleEndian>(len as u32);
+        response.encode(buf);
+        assert_eq!(len + 4, buf.len());
 
         let mut stdout = io::stdout();
-        stdout.lock().write_all(&bytes).unwrap();
+        stdout.lock().write_all(&buf[..]).unwrap();
         stdout.flush().unwrap();
     }
 }
