@@ -154,6 +154,7 @@ impl <'a> CodeGenerator<'a> {
 
         self.append_doc();
         self.push_indent();
+        self.buf.push_str("#[allow(dead_code)]\n");
         self.buf.push_str("#[derive(Clone, Debug, PartialEq, Message)]\n");
         self.push_indent();
         self.buf.push_str("pub struct ");
@@ -322,6 +323,7 @@ impl <'a> CodeGenerator<'a> {
         self.path.pop();
 
         self.push_indent();
+        self.buf.push_str("#[allow(dead_code)]\n");
         self.buf.push_str("#[derive(Clone, Debug, Oneof, PartialEq)]\n");
         self.push_indent();
         self.buf.push_str("pub enum ");
@@ -406,6 +408,7 @@ impl <'a> CodeGenerator<'a> {
 
         self.append_doc();
         self.push_indent();
+        self.buf.push_str("#[allow(dead_code)]\n");
         self.buf.push_str("#[derive(Clone, Copy, Debug, PartialEq, Eq, Enumeration)]\n");
         self.push_indent();
         self.buf.push_str("pub enum ");
